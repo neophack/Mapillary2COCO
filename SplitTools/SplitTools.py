@@ -14,7 +14,7 @@ import imageio
 from PIL import Image
 from tqdm import tqdm
 from multiprocessing.dummy import Pool as ThreadPool
-import concurrent.futures
+import concurrent.futures 
 import time
 
 labels=[]
@@ -67,8 +67,41 @@ def split_to_coco_creator(input_instance_array, labels):
 
     return labelid_matrix_name
 
+def pprocess(file_name):
+        global labels,dirname
+        #print(file_name,dirname,labels)
+        file_name = file_name[:-4]
+        instance_path = "{}/instances/{}.png".format(dirname,file_name)
+        instance_image = Image.open(instance_path)
+        instance_array = np.array(instance_image, dtype=np.uint16)
+        image_label_instance_infomatrix = split_to_coco_creator(
+            instance_array, labels)
 
+        for item in image_label_instance_infomatrix:
+            path = "{}_{}_{}.png".format(
+                file_name, item["label_name"].replace(" ", "_"), item["instance_id"])
+            imageio.imsave("{}/annotations/{}".format(dirname,path), item["image"])
+        del image_label_instance_infomatrix
+        del instance_image
+        del instance_array
+        return 0
+  
+def run(my_iter):
+        pbar = tqdm(total=len(my_iter))
+        with concurrent.futures.ProcessPoolExecutor(4) as executor:
+            to_do = []
+            for filename in my_iter:
+                #print(filename)
+                future = executor.submit(pprocess, filename)
+                to_do.append(future)
+
+            for _ in concurrent.futures.as_completed(to_do):
+                pbar.update(1)
+        pbar.close()    
+          
 def split_dir(dir_name):
+    global labels,dirname
+    dirname=dir_name
     print ("Spliting {}".format(dir_name))
 
     dir_path = "{}/instances".format(dir_name)
@@ -78,30 +111,8 @@ def split_dir(dir_name):
         config = json.load(config_file)
 
     labels = config['labels']
-    
-    def process(file_name):
-        print(file_name)
-        file_name = file_name[:-4]
-        instance_path = "{}/instances/{}.png".format(dir_name,file_name)
-        instance_image = Image.open(instance_path)
-        instance_array = np.array(instance_image, dtype=np.uint16)
-        image_label_instance_infomatrix = split_to_coco_creator(
-            instance_array, labels)
 
-        for item in image_label_instance_infomatrix:
-            path = "{}_{}_{}.png".format(
-                file_name, item["label_name"].replace(" ", "_"), item["instance_id"])
-            imageio.imsave("{}/annotations/{}".format(dir_name,path), item["image"])
-        del image_label_instance_infomatrix
-        del instance_image
-        del instance_array
-        return 0
-    
-    def run(f, my_iter):
-        with concurrent.futures.ThreadPoolExecutor(2) as executor:
-            results = list(tqdm(executor.map(f, my_iter), total=len(my_iter)))
-    
-    run(process, files)
+    run( files)
 
         
 
